@@ -1,0 +1,101 @@
+---
+title: "StageBH"
+author: "hidayahanafi"
+date: "2026-06-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(readxl)
+```
+
+```{r}
+table <- read_excel("TD 99.xlsx")
+str(table)
+colSums(is.na(table))
+```
+```{r}
+ggplot(table, aes(x = Age, y = Lx)) +
+  geom_line(linewidth = 1) +
+  labs(
+    title = "Évolution du nombre de survivants",
+    x = "Âge",
+    y = "Lx"
+  ) +
+  theme_minimal()
+```
+```{r}
+ggplot(table, aes(x = Age, y = qx)) +
+  geom_line(linewidth = 1) +
+  labs(
+    title = "Probabilité annuelle de décès",
+    x = "Âge",
+    y = "qx"
+  ) +
+  theme_minimal()
+```
+```{r}
+ggplot(table, aes(x = Age, y = dx1)) +
+  geom_line(linewidth = 1) +
+  labs(
+    title = "Nombre de décès par âge",
+    x = "Âge",
+    y = "dx1"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+v_estime <- table$Dx[table$Age == 1] / table$Lx[table$Age == 1]
+i_estime <- 1 / v_estime - 1
+i_estime
+```
+```{r}
+# Graphique des fonctions de commutation clés
+ggplot(table, aes(x = Age)) +
+  geom_line(aes(y = Dx, color = "Dx (Survivants actualisés)"), linewidth = 1) +
+  geom_line(aes(y = Mx, color = "Mx (Décès cumulés actualisés)"), linewidth = 1) +
+  labs(
+    title = "Évolution des fonctions de commutation (Taux : 3%)",
+    x = "Âge",
+    y = "Valeur",
+    color = "Indicateurs"
+  ) +
+  theme_minimal() +
+  scale_color_manual(values = c("Dx (Survivants actualisés)" = "blue", "Mx (Décès cumulés actualisés)" = "red"))
+```
+
+```{r}
+v <- 1 / (1 + i_estime)
+
+table_check <- table %>%
+  mutate(
+    Dx_check = v^Age * Lx,
+    Cx_check = v^(Age + 0.5) * dx1   # hypothèse : décès en milieu d'année
+  ) %>%
+  arrange(desc(Age)) %>%
+  mutate(
+    Nx_check = cumsum(Dx_check),
+    Mx_check = cumsum(Cx_check),
+    Rx_check = cumsum(Mx_check),
+    Sx_check = cumsum(Nx_check)
+  ) %>%
+  arrange(Age)
+
+table_check %>%
+  summarise(
+    ecart_Dx = max(abs(Dx - Dx_check)),
+    ecart_Cx = max(abs(Cx - Cx_check)),
+    ecart_Nx = max(abs(Nx - Nx_check)),
+    ecart_Mx = max(abs(Mx - Mx_check)),
+    ecart_Rx = max(abs(Rx - Rx_check)),
+    ecart_Sx = max(abs(Sx - Sx_check))
+  )
+```
+

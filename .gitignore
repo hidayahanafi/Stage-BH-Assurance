@@ -1,0 +1,19 @@
+# Ignore specific file types
+*.csv
+*.xlsx
+*.parquet
+*.json
+*.html
+
+# Ignore local Python environments and app state
+venv/
+.venv/
+.streamlit/
+.Rhistory
+
+# Common Python cache/build artifacts
+__pycache__/
+*.pyc
+
+# Ignore environment variables/keys
+.env

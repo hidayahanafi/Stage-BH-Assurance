@@ -1,0 +1,296 @@
+---
+title: "Visualisation Actuarielle — Assurance Emprunteur"
+author: "hidayahanafi"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: flatly
+    toc: true
+    toc_float: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, fig.width = 9, fig.height = 5)
+```
+
+```{r packages}
+library(dplyr)
+library(ggplot2)
+library(readxl)
+library(tidyr)
+library(scales)
+library(knitr)
+```
+
+```{r chargement}
+primes      <- read_excel("resultats_primes.xlsx")
+provisions  <- read_excel("provisions_mathematiques.xlsx")
+```
+
+---
+
+# Analyse des Primes
+
+## Statistiques Descriptives
+
+```{r stats_primes}
+stats <- primes %>%
+  summarise(
+    Nb_Contrats          = n(),
+    Prime_Pure_Moyenne   = round(mean(Prime_Unique_Pure_Calculee, na.rm = TRUE), 2),
+    Prime_Pure_Min       = round(min(Prime_Unique_Pure_Calculee,  na.rm = TRUE), 2),
+    Prime_Pure_Max       = round(max(Prime_Unique_Pure_Calculee,  na.rm = TRUE), 2),
+    Prime_Inventaire_Moy = round(mean(Prime_Inventaire,           na.rm = TRUE), 2),
+    Prime_Comm_Moyenne   = round(mean(Prime_Commerciale,          na.rm = TRUE), 2)
+  )
+
+kable(stats, caption = "Résumé des primes calculées", align = "c")
+```
+
+## Distribution des Primes
+
+```{r hist_primes}
+# Mise en forme longue pour ggplot
+primes_long <- primes %>%
+  select(Prime_Unique_Pure_Calculee, Prime_Inventaire, Prime_Commerciale) %>%
+  pivot_longer(
+    cols      = everything(),
+    names_to  = "Type_Prime",
+    values_to = "Valeur"
+  ) %>%
+  mutate(Type_Prime = recode(Type_Prime,
+    "Prime_Commerciale"          = "Prime Commerciale"
+  ))
+
+# Filtrer les primes à 0 (invalides)
+primes_plot <- primes_long %>%
+  filter(Valeur > 0)
+
+ggplot(primes_plot, aes(x = Valeur, fill = Type_Prime)) +
+  geom_histogram(bins = 50, alpha = 0.8, color = "white") +
+  facet_wrap(~ Type_Prime, scales = "free") +
+  scale_fill_manual(values = c("#2196F3", "#4CAF50", "#FF9800")) +
+  scale_x_log10(labels = comma) +
+  labs(
+    title    = "Distribution des 3 types de primes (Échelle Logarithmique)",
+    subtitle = "Contrats à prime unique — L'échelle log permet de mieux voir la répartition des petits et gros montants",
+    x        = "Montant de la prime (DT - Échelle Log)",
+    y        = "Nombre de contrats",
+    fill     = "Type de Prime"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none")
+```
+
+## Prime Pure vs Âge de Souscription
+
+```{r prime_age}
+ggplot(primes, aes(x = Age_Souscription, y = Prime_Unique_Pure_Calculee)) +
+  geom_point(alpha = 0.4, color = "#2196F3", size = 1.5) +
+  geom_smooth(method = "loess", color = "#E91E63", se = TRUE, linewidth = 1.2) +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title    = "Prime Pure en fonction de l'âge à la souscription",
+    subtitle = "La prime augmente avec l'âge (risque de décès plus élevé)",
+    x        = "Âge à la souscription",
+    y        = "Prime Unique Pure (DT)"
+  ) +
+  theme_minimal(base_size = 13)
+```
+
+## Prime Pure vs Capital Assuré
+
+```{r prime_capital}
+ggplot(primes, aes(x = montant_credit_normal, y = Prime_Unique_Pure_Calculee)) +
+  geom_point(alpha = 0.4, color = "#9C27B0", size = 1.5) +
+  geom_smooth(method = "lm", color = "#FF5722", se = TRUE, linewidth = 1.2) +
+  scale_x_continuous(labels = comma) +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title    = "Prime Pure en fonction du capital assuré",
+    subtitle = "Relation linéaire attendue : plus le capital est élevé, plus la prime est élevée",
+    x        = "Montant du crédit (DT)",
+    y        = "Prime Unique Pure (DT)"
+  ) +
+  theme_minimal(base_size = 13)
+```
+
+## Primes par Tranche d'Âge
+
+```{r boxplot_age}
+primes <- primes %>%
+  mutate(Tranche_Age = cut(Age_Souscription,
+    breaks = c(0, 30, 40, 50, 60, Inf),
+    labels = c("< 30 ans", "30–40 ans", "40–50 ans", "50–60 ans", "> 60 ans"),
+    right  = FALSE
+  ))
+
+ggplot(primes, aes(x = Tranche_Age, y = Prime_Unique_Pure_Calculee, fill = Tranche_Age)) +
+  geom_boxplot(alpha = 0.8, outlier.alpha = 0.3) +
+  scale_y_continuous(labels = comma) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    title    = "Distribution des primes pures par tranche d'âge",
+    subtitle = "Les tranches plus âgées ont des primes plus élevées et plus dispersées",
+    x        = "Tranche d'âge",
+    y        = "Prime Unique Pure (DT)",
+    fill     = "Tranche d'âge"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "none")
+```
+
+## Comparaison des 3 Primes (Moyenne par Tranche d'Âge)
+
+```{r compare_primes_age}
+primes_moy <- primes %>%
+  group_by(Tranche_Age) %>%
+  summarise(
+    `Prime Pure`        = mean(Prime_Unique_Pure_Calculee, na.rm = TRUE),
+    `Prime Inventaire`  = mean(Prime_Inventaire,           na.rm = TRUE),
+    `Prime Commerciale` = mean(Prime_Commerciale,          na.rm = TRUE)
+  ) %>%
+  pivot_longer(-Tranche_Age, names_to = "Type", values_to = "Moyenne")
+
+ggplot(primes_moy, aes(x = Tranche_Age, y = Moyenne, fill = Type)) +
+  geom_bar(stat = "identity", position = "dodge", alpha = 0.85) +
+  scale_y_continuous(labels = comma) +
+  scale_fill_manual(values = c("#2196F3", "#4CAF50", "#FF9800")) +
+  labs(
+    title    = "Primes moyennes par tranche d'âge",
+    subtitle = "Comparaison des 3 types de primes",
+    x        = "Tranche d'âge",
+    y        = "Prime moyenne (DT)",
+    fill     = "Type de Prime"
+  ) +
+  theme_minimal(base_size = 13)
+```
+
+---
+
+# Analyse des Provisions Mathématiques
+
+## Évolution Moyenne des Provisions dans le Temps
+
+```{r evol_provisions}
+prov_moy <- provisions %>%
+  group_by(t) %>%
+  summarise(
+    Provision_Moyenne = mean(Provision_t, na.rm = TRUE),
+    Provision_Q1      = quantile(Provision_t, 0.25, na.rm = TRUE),
+    Provision_Q3      = quantile(Provision_t, 0.75, na.rm = TRUE)
+  )
+
+ggplot(prov_moy, aes(x = t)) +
+  geom_ribbon(aes(ymin = Provision_Q1, ymax = Provision_Q3),
+              fill = "#2196F3", alpha = 0.2) +
+  geom_line(aes(y = Provision_Moyenne), color = "#1565C0", linewidth = 1.5) +
+  geom_point(aes(y = Provision_Moyenne), color = "#1565C0", size = 2.5) +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title    = "Évolution des provisions mathématiques dans le temps",
+    subtitle  = "Ligne = moyenne | Zone bleue = intervalle Q1–Q3",
+    x        = "Année t depuis la souscription",
+    y        = "Provision  t/n V'x  (DT)"
+  ) +
+  theme_minimal(base_size = 13)
+```
+
+## Provisions sur quelques Contrats Individuels (Trajectoires)
+
+```{r trajectoires}
+# Sélection des 8 premiers contrats distincts
+contrats_exemple <- provisions %>%
+  distinct(num_contrat) %>%
+  head(8) %>%
+  pull(num_contrat)
+
+prov_exemple <- provisions %>%
+  filter(num_contrat %in% contrats_exemple) %>%
+  mutate(num_contrat = as.character(num_contrat))
+
+ggplot(prov_exemple, aes(x = t, y = Provision_t, color = num_contrat, group = num_contrat)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title    = "Trajectoire des provisions par contrat",
+    subtitle = "Chaque ligne = un contrat individuel (décroissance attendue vers 0)",
+    x        = "Année t",
+    y        = "Provision  t/n V'x  (DT)",
+    color    = "N° Contrat"
+  ) +
+  theme_minimal(base_size = 13)
+```
+
+## Provision Initiale vs Capital Assuré
+
+```{r prov_vs_capital}
+prov_t0 <- provisions %>%
+  filter(t == 0)
+
+ggplot(prov_t0, aes(x = Capital_Initial, y = Provision_t)) +
+  geom_point(alpha = 0.4, color = "#E91E63", size = 1.5) +
+  geom_smooth(method = "lm", color = "#880E4F", se = TRUE, linewidth = 1.2) +
+  scale_x_continuous(labels = comma) +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title    = "Provision initiale (t=0) vs Capital assuré",
+    subtitle = "La provision à la souscription = Prime Inventaire",
+    x        = "Capital assuré (DT)",
+    y        = "Provision initiale 0/n V'x (DT)"
+  ) +
+  theme_minimal(base_size = 13)
+```
+
+## Taux de Provisionnement (Provision / Capital Restant Dû)
+
+```{r taux_provisionement}
+provisions_taux <- provisions %>%
+  filter(CRD_au_mois_t > 0) %>%
+  mutate(Taux_Prov = Provision_t / CRD_au_mois_t * 100)
+
+prov_taux_moy <- provisions_taux %>%
+  group_by(t) %>%
+  summarise(Taux_Moyen = mean(Taux_Prov, na.rm = TRUE))
+
+ggplot(prov_taux_moy, aes(x = t, y = Taux_Moyen)) +
+  geom_line(color = "#FF6F00", linewidth = 1.5) +
+  geom_point(color = "#FF6F00", size = 2.5) +
+  labs(
+    title    = "Taux de provisionnement moyen dans le temps",
+    subtitle = "Taux = Provision / CRD  — mesure le poids de la provision par rapport au capital restant",
+    x        = "Année t",
+    y        = "Taux de provisionnement (%)"
+  ) +
+  scale_y_continuous(labels = function(x) paste0(round(x, 2), "%")) +
+  theme_minimal(base_size = 13)
+```
+
+---
+
+# Synthèse
+
+```{r synthese}
+synthese <- data.frame(
+  Indicateur = c(
+    "Nombre de contrats",
+    "Prime Pure moyenne",
+    "Prime Inventaire moyenne",
+    "Prime Commerciale moyenne",
+    "Provision moyenne (t=0)",
+    "Provision moyenne (dernière année)"
+  ),
+  Valeur = c(
+    nrow(primes),
+    paste(round(mean(primes$Prime_Unique_Pure_Calculee, na.rm=TRUE), 2), "DT"),
+    paste(round(mean(primes$Prime_Inventaire,           na.rm=TRUE), 2), "DT"),
+    paste(round(mean(primes$Prime_Commerciale,          na.rm=TRUE), 2), "DT"),
+    paste(round(mean(provisions$Provision_t[provisions$t == 0],          na.rm=TRUE), 2), "DT"),
+    paste(round(mean(provisions$Provision_t[provisions$t == max(provisions$t)], na.rm=TRUE), 2), "DT")
+  )
+)
+
+kable(synthese, caption = "Tableau de synthèse actuarielle", align = c("l", "r"))
+```
