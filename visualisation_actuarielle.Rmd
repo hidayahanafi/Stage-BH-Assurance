@@ -8,7 +8,20 @@ output:
     toc: true
     toc_float: true
     number_sections: true
+params:
+  fichier_primes: "resultats_primes.xlsx"
+  fichier_provisions: "provisions_mathematiques.xlsx"
 ---
+
+<!--
+  ATTENTION CONFIDENTIALITÉ :
+  Ce rapport charge des données de portefeuille (primes, provisions) qui,
+  en environnement réel, correspondent à des contrats clients de BH
+  Assurance. Le HTML/PDF généré à partir de ce fichier ne doit JAMAIS être
+  publié publiquement (GitHub, portfolio, LinkedIn) sans données anonymisées
+  ou synthétiques en entrée, même si les numéros de contrat ne sont plus
+  affichés en clair (cf. section Trajectoires ci-dessous).
+-->
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, fig.width = 9, fig.height = 5)
@@ -24,8 +37,8 @@ library(knitr)
 ```
 
 ```{r chargement}
-primes      <- read_excel("resultats_primes.xlsx")
-provisions  <- read_excel("provisions_mathematiques.xlsx")
+primes      <- read_excel(params$fichier_primes)
+provisions  <- read_excel(params$fichier_provisions)
 ```
 
 ---
@@ -51,7 +64,6 @@ kable(stats, caption = "Résumé des primes calculées", align = "c")
 ## Distribution des Primes
 
 ```{r hist_primes}
-# Mise en forme longue pour ggplot
 primes_long <- primes %>%
   select(Prime_Unique_Pure_Calculee, Prime_Inventaire, Prime_Commerciale) %>%
   pivot_longer(
@@ -60,6 +72,8 @@ primes_long <- primes %>%
     values_to = "Valeur"
   ) %>%
   mutate(Type_Prime = recode(Type_Prime,
+    "Prime_Unique_Pure_Calculee" = "Prime Unique Pure",
+    "Prime_Inventaire"           = "Prime Inventaire",
     "Prime_Commerciale"          = "Prime Commerciale"
   ))
 
@@ -197,10 +211,12 @@ ggplot(prov_moy, aes(x = t)) +
   theme_minimal(base_size = 13)
 ```
 
-## Provisions sur quelques Contrats Individuels (Trajectoires)
+## Provisions sur quelques Contrats (Trajectoires)
 
 ```{r trajectoires}
-# Sélection des 8 premiers contrats distincts
+# IMPORTANT : on n'affiche JAMAIS le vrai numéro de contrat dans un rapport
+# destiné à être partagé (même en interne) — on le remplace par un label
+# anonyme "Contrat A", "Contrat B", ... généré à la volée.
 contrats_exemple <- provisions %>%
   distinct(num_contrat) %>%
   head(8) %>%
@@ -208,18 +224,24 @@ contrats_exemple <- provisions %>%
 
 prov_exemple <- provisions %>%
   filter(num_contrat %in% contrats_exemple) %>%
-  mutate(num_contrat = as.character(num_contrat))
+  mutate(
+    contrat_anonyme = factor(
+      num_contrat,
+      levels = contrats_exemple,
+      labels = paste("Contrat", LETTERS[seq_along(contrats_exemple)])
+    )
+  )
 
-ggplot(prov_exemple, aes(x = t, y = Provision_t, color = num_contrat, group = num_contrat)) +
+ggplot(prov_exemple, aes(x = t, y = Provision_t, color = contrat_anonyme, group = contrat_anonyme)) +
   geom_line(linewidth = 1) +
   geom_point(size = 2) +
   scale_y_continuous(labels = comma) +
   labs(
-    title    = "Trajectoire des provisions par contrat",
+    title    = "Trajectoire des provisions par contrat (identifiants anonymisés)",
     subtitle = "Chaque ligne = un contrat individuel (décroissance attendue vers 0)",
     x        = "Année t",
     y        = "Provision  t/n V'x  (DT)",
-    color    = "N° Contrat"
+    color    = "Contrat"
   ) +
   theme_minimal(base_size = 13)
 ```

@@ -6,6 +6,7 @@
 *.html
 
 # Ignore local Python environments and app state
+env/
 venv/
 .venv/
 .streamlit/

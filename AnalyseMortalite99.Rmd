@@ -1,26 +1,31 @@
 ---
-title: "StageBH"
+title: "Analyse de la table de mortalité TD99"
 author: "hidayahanafi"
-date: "2026-06-29"
+date: "`r Sys.Date()`"
 output: html_document
+params:
+  fichier_td99: "TD 99.xlsx"
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r}
+```{r packages}
 library(dplyr)
 library(ggplot2)
 library(readxl)
 ```
 
-```{r}
-table <- read_excel("TD 99.xlsx")
+```{r chargement}
+# Chemin paramétrable (Knit avec params list, ou --params en CLI) plutôt
+# que codé en dur — pratique si le fichier change d'emplacement.
+table <- read_excel(params$fichier_td99)
 str(table)
 colSums(is.na(table))
 ```
-```{r}
+
+```{r survivants}
 ggplot(table, aes(x = Age, y = Lx)) +
   geom_line(linewidth = 1) +
   labs(
@@ -30,7 +35,8 @@ ggplot(table, aes(x = Age, y = Lx)) +
   ) +
   theme_minimal()
 ```
-```{r}
+
+```{r qx}
 ggplot(table, aes(x = Age, y = qx)) +
   geom_line(linewidth = 1) +
   labs(
@@ -40,7 +46,8 @@ ggplot(table, aes(x = Age, y = qx)) +
   ) +
   theme_minimal()
 ```
-```{r}
+
+```{r dx1}
 ggplot(table, aes(x = Age, y = dx1)) +
   geom_line(linewidth = 1) +
   labs(
@@ -51,27 +58,35 @@ ggplot(table, aes(x = Age, y = dx1)) +
   theme_minimal()
 ```
 
-```{r}
+```{r taux_technique}
+# Estimation du taux technique implicite de la table (v = Dx / Lx à l'âge 1)
 v_estime <- table$Dx[table$Age == 1] / table$Lx[table$Age == 1]
 i_estime <- 1 / v_estime - 1
 i_estime
 ```
-```{r}
+
+```{r commutation}
 # Graphique des fonctions de commutation clés
 ggplot(table, aes(x = Age)) +
   geom_line(aes(y = Dx, color = "Dx (Survivants actualisés)"), linewidth = 1) +
   geom_line(aes(y = Mx, color = "Mx (Décès cumulés actualisés)"), linewidth = 1) +
   labs(
-    title = "Évolution des fonctions de commutation (Taux : 3%)",
+    title = paste0("Évolution des fonctions de commutation (Taux : ", scales::percent(i_estime, accuracy = 0.1), ")"),
     x = "Âge",
     y = "Valeur",
     color = "Indicateurs"
   ) +
   theme_minimal() +
-  scale_color_manual(values = c("Dx (Survivants actualisés)" = "blue", "Mx (Décès cumulés actualisés)" = "red"))
+  scale_color_manual(values = c(
+    "Dx (Survivants actualisés)"    = "blue",
+    "Mx (Décès cumulés actualisés)" = "red"
+  ))
 ```
 
-```{r}
+```{r verification_coherence}
+# Vérifie que les fonctions de commutation fournies dans la table (Dx, Cx,
+# Nx, Mx, Rx, Sx) sont cohérentes avec le taux technique estimé ci-dessus —
+# sert de garde-fou avant d'utiliser cette table dans le moteur de tarification.
 v <- 1 / (1 + i_estime)
 
 table_check <- table %>%
@@ -98,4 +113,3 @@ table_check %>%
     ecart_Sx = max(abs(Sx - Sx_check))
   )
 ```
-
